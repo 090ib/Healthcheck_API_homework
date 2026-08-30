@@ -165,8 +165,9 @@ jobs:
         include:
           - environment: staging
             role_secret: AWS_DEPLOY_ROLE_ARN_STAGING
-          - environment: prod
-            role_secret: AWS_DEPLOY_ROLE_ARN_PROD
+# commenting out prod stage, as for now prod deployment is out of my budget
+#          - environment: prod
+#            role_secret: AWS_DEPLOY_ROLE_ARN_PROD
     steps:
       - uses: actions/checkout@v4
 

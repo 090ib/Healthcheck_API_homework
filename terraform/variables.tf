@@ -21,7 +21,7 @@ variable "project" {
 variable "repository" {
   description = "Source repository, recorded as a tag for provenance."
   type        = string
-  default     = "Healthcheck_API_hw"
+  default     = "Healthcheck_API_homework"
 }
 
 variable "aws_region" {

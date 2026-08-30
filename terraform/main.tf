@@ -1,5 +1,5 @@
 ###############################################################################
-# Health check API -- root module
+# Health check API: root module
 #
 # Wires the five reusable modules together for one environment. Which
 # environment is decided entirely by the -var-file passed at plan/apply time:
@@ -8,7 +8,7 @@
 ###############################################################################
 
 ###############################################################################
-# Customer-managed KMS key -- one per environment, used everywhere
+# Customer-managed KMS key: one per environment, used everywhere
 ###############################################################################
 
 data "aws_iam_policy_document" "kms" {
@@ -90,7 +90,7 @@ module "dynamodb" {
 }
 
 ###############################################################################
-# Network -- the Lambda's own VPC, with a DynamoDB gateway endpoint
+# Network: the Lambda's own VPC, with a DynamoDB gateway endpoint
 ###############################################################################
 
 module "network" {
@@ -234,7 +234,7 @@ resource "aws_cloudwatch_metric_alarm" "api_5xx" {
   tags          = local.tags
 }
 
-# A sustained wall of 429s means the throttle is doing its job -- but it is
+# A sustained wall of 429s means the throttle is doing its job, but it is
 # also how a volumetric attack looks, so it is worth an alarm.
 resource "aws_cloudwatch_metric_alarm" "api_throttled" {
   count = var.enable_alarms ? 1 : 0

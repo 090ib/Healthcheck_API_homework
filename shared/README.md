@@ -20,6 +20,19 @@ terraform init
 terraform apply -var="deploy_role_external_id=$(openssl rand -hex 16)"
 ```
 
+`terraform.tfvars` is auto-loaded and controls which environments get a
+deployment role. It ships as:
+
+```hcl
+environments = ["staging"]
+```
+
+Widen it to `["staging", "prod"]` when production is signed off. The list lives
+in a committed file rather than a `-var` flag on purpose: this stack is
+re-applied to rotate the CI key, and a run that forgot the flag would create
+the production role as a side effect of a key rotation.
+
+
 Keep the `deploy_role_external_id` you generated: it becomes the
 `AWS_DEPLOY_EXTERNAL_ID` GitHub secret and is required on every `AssumeRole`.
 

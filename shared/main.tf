@@ -1,5 +1,5 @@
 ###############################################################################
-# Shared stack -- applied ONCE per AWS account by an administrator.
+# Shared stack: applied ONCE per AWS account by an administrator.
 #
 # Everything here is account-level and must exist before the environment stacks
 # can run at all:
@@ -12,7 +12,7 @@
 # This stack uses local state on purpose: it is what creates the remote state
 # backend, so it cannot use it. Apply it from a workstation with admin
 # credentials and keep terraform.tfstate somewhere safe (it contains the CI
-# secret access key) -- or re-run it, since every resource here is idempotent.
+# secret access key), or re-run it, since every resource here is idempotent.
 ###############################################################################
 
 data "aws_caller_identity" "current" {}
@@ -152,7 +152,7 @@ resource "aws_dynamodb_table" "state_lock" {
 }
 
 ###############################################################################
-# CI identity -- the "AWS authentication via API key" requirement
+# CI identity: the "AWS authentication via API key" requirement
 #
 # This user holds a long-lived access key, which is the only long-lived
 # credential in the system. Its own policy grants nothing except the right to
@@ -197,7 +197,7 @@ resource "aws_iam_access_key" "ci" {
 }
 
 ###############################################################################
-# Deployment roles -- one per environment
+# Deployment roles: one per environment
 ###############################################################################
 
 module "deploy_role" {
@@ -220,7 +220,7 @@ module "deploy_role" {
 # API Gateway account settings
 #
 # The CloudWatch role for API Gateway is an account-wide singleton, which is
-# why it lives here rather than in the per-environment stack -- two
+# why it lives here rather than in the per-environment stack. Two
 # environments both managing it would fight over the same setting.
 ###############################################################################
 

@@ -1,0 +1,279 @@
+###############################################################################
+# Deploy
+#
+#   push to main  ->  quality gate  ->  security gate  ->  staging  ->  [approval]  ->  prod
+#
+# The approval gate is a GitHub *environment* protection rule, not a step in
+# this file: the `production` environment is configured with required
+# reviewers, so the deploy-prod job sits in "Waiting" until a human approves
+# it. That keeps the gate outside the control of anyone who can edit the
+# workflow.
+###############################################################################
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  workflow_dispatch:
+    inputs:
+      deploy_prod:
+        description: "Continue to production after staging succeeds"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  security-events: write
+
+# One deploy at a time; never cancel a run that may be mid-apply.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: "1.9.8"
+  PYTHON_VERSION: "3.12"
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  # ==========================================================================
+  # 1. Quality gate -- the Lambda must be correct and its dependencies clean
+  # ==========================================================================
+  quality:
+    name: Tests and dependency scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check src tests
+
+      - name: Unit tests
+        run: pytest -q
+
+      # [sec] Dependency scanning for the Lambda -- fails the build on any
+      # known-vulnerable package in the function's requirements.
+      - name: Dependency scan (pip-audit)
+        run: pip-audit --requirement src/lambda/requirements.txt --strict --desc
+
+      - name: Python SAST (bandit)
+        run: bandit -r src/lambda -ll
+
+  # ==========================================================================
+  # 2. [sec] Security gate -- IaC scanning, BEFORE any terraform apply
+  # ==========================================================================
+  security:
+    name: IaC security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Format check
+        run: terraform fmt -check -recursive
+
+      - name: Validate
+        run: |
+          terraform -chdir=terraform init -backend=false
+          terraform -chdir=terraform validate
+
+      - name: Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: .
+          framework: terraform
+          quiet: true
+          soft_fail: false
+          config_file: .checkov.yml
+          output_format: cli,sarif
+          output_file_path: console,checkov.sarif
+
+      - name: Upload Checkov SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov.sarif
+          category: checkov
+
+      - name: Trivy config scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          trivy-config: trivy.yaml
+
+  # ==========================================================================
+  # 3. Staging -- deployed automatically once both gates are green
+  # ==========================================================================
+  deploy-staging:
+    name: Deploy staging
+    runs-on: ubuntu-latest
+    needs: [quality, security]
+    environment:
+      name: staging
+      url: ${{ steps.outputs.outputs.health_endpoint }}
+    outputs:
+      health_endpoint: ${{ steps.outputs.outputs.health_endpoint }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      # [sec] AWS authentication via API key. The key's user can do nothing but
+      # assume the staging deployment role, which is itself fenced to
+      # staging-* resources in one region.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Init
+        run: >
+          terraform -chdir=terraform init
+          -backend-config=env/staging.backend.hcl
+          -input=false
+
+      # Packaging and versioning are automated here: the archive is built from
+      # src/lambda, content-addressed by its SHA-256, uploaded to the versioned
+      # artifact bucket, and published as a numbered Lambda version that the
+      # "live" alias is moved onto. github.sha is stamped on the artifact so a
+      # deployed function can be traced back to a commit.
+      - name: Plan
+        env:
+          TF_VAR_deploy_role_arn: ${{ secrets.AWS_DEPLOY_ROLE_ARN_STAGING }}
+          TF_VAR_deploy_role_external_id: ${{ secrets.AWS_DEPLOY_EXTERNAL_ID }}
+          TF_VAR_source_version: ${{ github.sha }}
+        run: >
+          terraform -chdir=terraform plan
+          -var-file=env/staging.tfvars
+          -input=false -no-color -lock-timeout=5m
+          -out=staging.tfplan
+
+      - name: Apply
+        env:
+          TF_VAR_deploy_role_arn: ${{ secrets.AWS_DEPLOY_ROLE_ARN_STAGING }}
+          TF_VAR_deploy_role_external_id: ${{ secrets.AWS_DEPLOY_EXTERNAL_ID }}
+          TF_VAR_source_version: ${{ github.sha }}
+        run: >
+          terraform -chdir=terraform apply
+          -input=false -no-color -lock-timeout=5m
+          -auto-approve staging.tfplan
+
+      - name: Collect outputs
+        id: outputs
+        run: |
+          endpoint=$(terraform -chdir=terraform output -raw health_endpoint)
+          version=$(terraform -chdir=terraform output -raw lambda_function_version)
+          echo "health_endpoint=$endpoint" >> "$GITHUB_OUTPUT"
+          echo "Deployed Lambda version $version at $endpoint" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke test
+        run: bash scripts/smoke-test.sh "${{ steps.outputs.outputs.health_endpoint }}"
+
+  # ==========================================================================
+  # 4. Production -- blocked on manual approval
+  #
+  # Configure Settings -> Environments -> production -> "Required reviewers".
+  # This job will not start until one of them approves the run.
+  # ==========================================================================
+  deploy-prod:
+    name: Deploy production
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || inputs.deploy_prod)
+    environment:
+      name: production
+      url: ${{ steps.outputs.outputs.health_endpoint }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # -reconfigure because the same root module is being pointed at a
+      # different state key.
+      - name: Init
+        run: >
+          terraform -chdir=terraform init -reconfigure
+          -backend-config=env/prod.backend.hcl
+          -input=false
+
+      - name: Plan
+        env:
+          TF_VAR_deploy_role_arn: ${{ secrets.AWS_DEPLOY_ROLE_ARN_PROD }}
+          TF_VAR_deploy_role_external_id: ${{ secrets.AWS_DEPLOY_EXTERNAL_ID }}
+          TF_VAR_source_version: ${{ github.sha }}
+        run: >
+          terraform -chdir=terraform plan
+          -var-file=env/prod.tfvars
+          -input=false -no-color -lock-timeout=5m
+          -out=prod.tfplan
+
+      - name: Show plan in the run summary
+        run: |
+          {
+            echo '<details><summary>Production plan</summary>'
+            echo
+            echo '```terraform'
+            terraform -chdir=terraform show -no-color prod.tfplan | tail -c 60000
+            echo '```'
+            echo
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply
+        env:
+          TF_VAR_deploy_role_arn: ${{ secrets.AWS_DEPLOY_ROLE_ARN_PROD }}
+          TF_VAR_deploy_role_external_id: ${{ secrets.AWS_DEPLOY_EXTERNAL_ID }}
+          TF_VAR_source_version: ${{ github.sha }}
+        run: >
+          terraform -chdir=terraform apply
+          -input=false -no-color -lock-timeout=5m
+          -auto-approve prod.tfplan
+
+      - name: Collect outputs
+        id: outputs
+        run: |
+          endpoint=$(terraform -chdir=terraform output -raw health_endpoint)
+          version=$(terraform -chdir=terraform output -raw lambda_function_version)
+          echo "health_endpoint=$endpoint" >> "$GITHUB_OUTPUT"
+          echo "Deployed Lambda version $version at $endpoint" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke test
+        run: bash scripts/smoke-test.sh "${{ steps.outputs.outputs.health_endpoint }}"

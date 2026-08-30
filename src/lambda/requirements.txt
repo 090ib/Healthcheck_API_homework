@@ -1,0 +1,12 @@
+# Runtime dependencies for the health-check Lambda.
+#
+# The function deliberately depends only on the AWS SDK, which the managed
+# Python runtime already ships. Nothing is vendored into the deployment
+# package, which keeps the artifact small and the dependency attack surface at
+# zero.
+#
+# boto3/botocore are pinned here so the CI dependency-scanning step (pip-audit)
+# has a concrete, reviewable set of versions to check the runtime SDK against,
+# and so unit tests run against the same major version as the runtime.
+boto3==1.35.76
+botocore==1.35.76

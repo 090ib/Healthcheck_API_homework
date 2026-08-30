@@ -3,6 +3,8 @@
 #
 #   push to main  ->  quality gate  ->  security gate  ->  staging  ->  [approval]  ->  prod
 #
+# NOTE: prod deployment is paused due to limited budget
+#
 # The approval gate is a GitHub *environment* protection rule, not a step in
 # this file: the `production` environment is configured with required
 # reviewers, so the deploy-prod job sits in "Waiting" until a human approves
@@ -16,7 +18,6 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - "docs/**"
       - "**/*.md"
   workflow_dispatch:
     inputs:
@@ -41,7 +42,7 @@ env:
 
 jobs:
   # ==========================================================================
-  # 1. Quality gate -- the Lambda must be correct and its dependencies clean
+  # 1. Quality gate: the Lambda must be correct and its dependencies clean
   # ==========================================================================
   quality:
     name: Tests and dependency scan
@@ -65,7 +66,7 @@ jobs:
       - name: Unit tests
         run: pytest -q
 
-      # [sec] Dependency scanning for the Lambda -- fails the build on any
+      # Dependency scanning for the Lambda, fails the build on any
       # known-vulnerable package in the function's requirements.
       - name: Dependency scan (pip-audit)
         run: pip-audit --requirement src/lambda/requirements.txt --strict --desc
@@ -74,7 +75,7 @@ jobs:
         run: bandit -r src/lambda -ll
 
   # ==========================================================================
-  # 2. [sec] Security gate -- IaC scanning, BEFORE any terraform apply
+  # 2. Security gate: IaC scanning, BEFORE any terraform apply
   # ==========================================================================
   security:
     name: IaC security scan
@@ -123,7 +124,7 @@ jobs:
           trivy-config: trivy.yaml
 
   # ==========================================================================
-  # 3. Staging -- deployed automatically once both gates are green
+  # 3. Staging: deployed automatically once both gates are green
   # ==========================================================================
   deploy-staging:
     name: Deploy staging
@@ -142,7 +143,7 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
-      # [sec] AWS authentication via API key. The key's user can do nothing but
+      # AWS authentication via API key. The key's user can do nothing but
       # assume the staging deployment role, which is itself fenced to
       # staging-* resources in one region.
       - name: Configure AWS credentials
@@ -196,7 +197,8 @@ jobs:
         run: bash scripts/smoke-test.sh "${{ steps.outputs.outputs.health_endpoint }}"
 
   # ==========================================================================
-  # 4. Production -- blocked on manual approval
+  # 4. Production: blocked on manual approval
+  # (switching off prod deployment due to limited budget)
   #
   # Configure Settings -> Environments -> production -> "Required reviewers".
   # This job will not start until one of them approves the run.
@@ -207,6 +209,7 @@ jobs:
     needs: [deploy-staging]
     if: >-
       github.ref == 'refs/heads/main' &&
+      vars.DEPLOY_PROD == 'true' &&
       (github.event_name == 'push' || inputs.deploy_prod)
     environment:
       name: production

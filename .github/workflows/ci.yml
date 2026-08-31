@@ -15,6 +15,9 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  # upload-sarif reads run metadata to fingerprint alerts; without this scope
+  # it fails with "Resource not accessible by integration".
+  actions: read
   security-events: write
 
 concurrency:
@@ -125,12 +128,30 @@ jobs:
           # so a reviewer sees the justification next to the suppression.
           config_file: .checkov.yml
 
+      # Publishing to the Security tab needs GitHub Code Security, which is free
+      # on public repositories but a paid add-on on private ones. This step is
+      # therefore best-effort: it starts working on its own if the repository
+      # becomes public or gains Code Security, and never fails the gate in the
+      # meantime. The gate itself is the Checkov step above, which has already
+      # decided pass/fail by this point.
+
       - name: Upload Checkov SARIF
         if: always()
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: checkov.sarif
           category: checkov
+
+      # Always retrievable, with or without Code Security.
+      - name: Keep Checkov SARIF as a build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkov-sarif-${{ github.job }}
+          path: checkov.sarif
+          retention-days: 30
+          if-no-files-found: warn
 
       - name: Trivy config scan
         uses: aquasecurity/trivy-action@v0.36.0

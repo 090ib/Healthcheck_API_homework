@@ -171,6 +171,8 @@ resource "aws_iam_role" "lambda" {
 }
 
 data "aws_iam_policy_document" "lambda" {
+  #checkov:skip=CKV_AWS_356:The six ENI actions must be on Resource "*" -- AWS documents it, and CreateFunction's pre-flight check rejects any scoping or condition. See README, "The wildcards that remain".
+  #checkov:skip=CKV_AWS_111:Same statement. Every other action here is pinned to an exact ARN.
   # --- CloudWatch Logs: only this function's own log group -------------------
   statement {
     sid    = "WriteOwnLogs"

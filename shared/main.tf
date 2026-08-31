@@ -35,11 +35,32 @@ locals {
 ###############################################################################
 # Remote state backend
 ###############################################################################
+# An explicit key policy rather than relying on the AWS default. Functionally
+# the same, but it is reviewable in the repository instead of only in the
+# console, and it matches how the per-environment keys are defined.
+
+data "aws_iam_policy_document" "state_key" {
+  #checkov:skip=CKV_AWS_356:In a KMS *key* policy, "*" means this key, the grammar has no way to name the key being created. Not an IAM wildcard.
+  #checkov:skip=CKV_AWS_109:Same statement. AWS requires the account root to retain administration of every CMK, or the key becomes unmanageable.
+  #checkov:skip=CKV_AWS_111:Same statement.
+  statement {
+    sid       = "EnableIamPoliciesForAccount"
+    effect    = "Allow"
+    actions   = ["kms:*"]
+    resources = ["*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:${local.partition}:iam::${local.account_id}:root"]
+    }
+  }
+}
 
 resource "aws_kms_key" "state" {
   description             = "Encrypts Terraform state and the state lock table"
   enable_key_rotation     = true
   deletion_window_in_days = 30
+  policy                  = data.aws_iam_policy_document.state_key.json
 
   tags = merge(local.tags, { Name = "${var.project}-tfstate-key" })
 }
@@ -102,6 +123,12 @@ resource "aws_s3_bucket_lifecycle_configuration" "state" {
 
     noncurrent_version_expiration {
       noncurrent_days = 90
+    }
+    # Orphaned multipart uploads are invisible in the console and billed as
+    # storage forever. The artifact bucket already reclaims them; this bucket
+    # was missing the rule.
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
     }
   }
 }

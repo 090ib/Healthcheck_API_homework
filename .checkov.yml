@@ -1,8 +1,18 @@
 # Checkov configuration.
 #
-# Suppressions live here, with a reason, rather than as inline
-# `checkov:skip` comments scattered through the Terraform, so a reviewer can
-# see the complete list of accepted deviations in one place.
+# Suppressions are split deliberately across two places:
+#
+#   * HERE, when the check does not apply to this project at all, caching on
+#     a write endpoint, a year of log retention on a health probe. Skipping it
+#     repository-wide loses nothing, and one file holds the whole list of
+#     accepted deviations for a reviewer to read.
+#
+#   * INLINE, as `#checkov:skip=<id>:<reason>` on the specific resource, when
+#     the check is right in general but has a justified exception in one place.
+#     CKV_AWS_356 (no "*" in IAM resources) is the clearest case: it is the
+#     single most valuable check for a brief that prohibits wildcards, so
+#     disabling it repository-wide would be self-defeating. Three resources
+#     carry a documented exception; every future policy still gets checked.
 
 framework:
   - terraform
@@ -33,7 +43,7 @@ skip-check:
   # schema-validated and throttled at the edge. Set `authorization = "AWS_IAM"`
   # in the api_gateway module to close this.
   - CKV_AWS_59
-  - CKV2_AWS_53  # request validator -- one IS configured, but Checkov only
+  - CKV2_AWS_53  # request validator, one IS configured, but Checkov only
   # recognises the pattern where the validator is inline on the method rather
   # than referenced by id.
 
@@ -47,7 +57,7 @@ skip-check:
   # relevant audit trail (who deployed what) is CloudTrail plus the object
   # tags carrying the git SHA.
   - CKV_AWS_18
-  - CKV2_AWS_62  # S3 event notifications -- nothing consumes them here
+  - CKV2_AWS_62  # S3 event notifications, nothing consumes them here
 
   # "Ensure DynamoDB point-in-time recovery is enabled". Enabled in prod
   # (prod.tfvars) and deliberately off in staging, where the data is
@@ -58,6 +68,48 @@ skip-check:
   # synchronous behind API Gateway; failures surface as a 500 to the caller and
   # a CloudWatch alarm. A DLQ only applies to asynchronous invocations.
   - CKV_AWS_116
+
+  # "Ensure access is controlled through SSO and not AWS IAM defined users".
+  # Fires on aws_iam_user.ci in bootstrap/. The brief requires "AWS
+  # authentication via API key", and a static access key needs an IAM user ,
+  # Identity Center issues short-lived credentials to humans, not a machine
+  # identity a GitHub Actions runner can present. The mitigation is that this
+  # user holds exactly one permission, sts:AssumeRole into the deployment
+  # roles, guarded by an ExternalId, and the key is rotated quarterly. Swap
+  # this for OIDC federation and the check passes honestly.
+  - CKV_AWS_273
+
+  # "Ensure IAM policies are attached only to groups or roles". Fires on the
+  # CI user's inline policy, and is the same constraint as CKV_AWS_273: the
+  # brief requires a static access key, which requires a user. Routing that one
+  # policy through a single-member group adds a layer of indirection without
+  # removing a single permission.
+  - CKV_AWS_40
+
+  # "Ensure API Gateway method setting caching is enabled". The sibling of
+  # CKV_AWS_120 above, on method_settings rather than the stage. Caching a
+  # write endpoint would return stale confirmations for requests that were
+  # never stored.
+  - CKV_AWS_225
+
+  # "Ensure CloudWatch log groups retain logs for at least 1 year". Retention
+  # is a deliberate per-environment cost decision: 7 days in staging, 90 in
+  # prod, set through log_retention_days. A year of ingestion-priced storage on
+  # a health-check endpoint buys nothing. Raise prod.tfvars to 365 if a
+  # compliance regime requires it, the variable already accepts it.
+  - CKV_AWS_338
+
+  # "Ensure API Gateway endpoints use client certificate authentication".
+  # Client certificates authenticate API Gateway to an HTTP backend. This API
+  # integrates with Lambda through AWS_PROXY, where the trust boundary is IAM,
+  # so there is no leg for a certificate to secure.
+  - CKV2_AWS_51
+
+  # "Ensure Security Groups are attached to another resource". The Lambda
+  # security group IS attached, via vpc_config on aws_lambda_function, but
+  # that reference crosses a module boundary and Checkov's graph does not
+  # follow it. A false positive rather than a deviation.
+  - CKV2_AWS_5
 
   # "Ensure Lambda uses code-signing". Code signing requires an AWS Signer
   # profile, which is out of scope for this exercise. Artifact integrity is

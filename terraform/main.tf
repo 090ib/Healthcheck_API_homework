@@ -12,6 +12,9 @@
 ###############################################################################
 
 data "aws_iam_policy_document" "kms" {
+  #checkov:skip=CKV_AWS_356:In a KMS *key* policy, "*" means this key -- the grammar has no way to name the key being created. Not an IAM wildcard.
+  #checkov:skip=CKV_AWS_109:Same statement. AWS requires the account root to retain administration of every CMK, or the key becomes unmanageable.
+  #checkov:skip=CKV_AWS_111:Same statement. The CloudWatch Logs grant is constrained by a kms:EncryptionContext condition.
   # Without this statement the key becomes unmanageable: AWS requires the
   # account root to retain administrative access, and it is what allows IAM
   # policies (rather than only the key policy) to grant use of the key.

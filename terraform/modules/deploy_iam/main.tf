@@ -117,6 +117,7 @@ data "aws_iam_policy_document" "state" {
 ###############################################################################
 
 data "aws_iam_policy_document" "stack" {
+  #checkov:skip=CKV_AWS_356:Two statements need "*": kms:CreateKey (no key exists to scope to) and the read-only ec2:Describe* family (no resource-level permissions in IAM). Both are fenced by aws:RequestedRegion, and a Deny block bounds the rest. See README.
   # --- DynamoDB application table ------------------------------------------
   statement {
     sid    = "ManageApplicationTable"

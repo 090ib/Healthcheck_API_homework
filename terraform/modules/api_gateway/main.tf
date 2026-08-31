@@ -24,6 +24,13 @@ resource "aws_api_gateway_rest_api" "this" {
   }
 
   tags = merge(var.tags, { Name = local.api_name })
+
+  # Replacing a REST API in place would take the endpoint down between the
+  # destroy and the create. Building the replacement first keeps the URL
+  # serving throughout.
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 ###############################################################################

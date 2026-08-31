@@ -121,28 +121,13 @@ variable "kms_key_arn" {
   type        = string
 }
 
-variable "vpc_id" {
-  description = "VPC the function runs in."
-  type        = string
-}
-
 variable "subnet_ids" {
   description = "Private subnet IDs for the function's ENIs."
   type        = list(string)
 }
 
-variable "subnet_arns" {
-  description = "ARNs of the same subnets, used to scope the ec2:CreateNetworkInterface permission."
-  type        = list(string)
-}
-
 variable "security_group_id" {
   description = "Security group attached to the function's ENIs."
-  type        = string
-}
-
-variable "security_group_arn" {
-  description = "ARN of that security group, used to scope ec2:CreateNetworkInterface."
   type        = string
 }
 

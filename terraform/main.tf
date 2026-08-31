@@ -139,11 +139,8 @@ module "lambda" {
   dynamodb_table_arn  = module.dynamodb.table_arn
   kms_key_arn         = aws_kms_key.this.arn
 
-  vpc_id             = module.network.vpc_id
-  subnet_ids         = module.network.private_subnet_ids
-  subnet_arns        = [for id in module.network.private_subnet_ids : "arn:${local.partition}:ec2:${local.region}:${local.account_id}:subnet/${id}"]
-  security_group_id  = module.network.lambda_security_group_id
-  security_group_arn = "arn:${local.partition}:ec2:${local.region}:${local.account_id}:security-group/${module.network.lambda_security_group_id}"
+  subnet_ids        = module.network.private_subnet_ids
+  security_group_id = module.network.lambda_security_group_id
 
   artifacts_bucket_name   = var.artifacts_bucket_name
   artifacts_force_destroy = var.artifacts_force_destroy

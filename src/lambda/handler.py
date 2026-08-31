@@ -4,7 +4,7 @@ Invoked by API Gateway (REST API v1, Lambda proxy integration) on /health.
 
 Responsibilities:
   1. Log the incoming request event to CloudWatch.
-  2. Validate that the request carries a ``payload`` key (API Gateway 
+  2. Validate that the request carries a ``payload`` key (API Gateway
      already rejects requests that do not, see the request
      validator in the api_gateway module).
   3. Persist the request details to DynamoDB under a freshly generated UUID.

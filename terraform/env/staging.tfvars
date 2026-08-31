@@ -24,7 +24,7 @@ item_ttl_days                   = 7
 # --- Compute ---------------------------------------------------------------
 lambda_memory_size          = 256
 lambda_timeout              = 10
-lambda_reserved_concurrency = 10
+lambda_reserved_concurrency = -1
 lambda_log_level            = "INFO"
 lambda_tracing_mode         = "PassThrough"
 

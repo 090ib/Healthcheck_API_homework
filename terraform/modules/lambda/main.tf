@@ -110,7 +110,7 @@ resource "aws_s3_object" "package" {
   bucket = aws_s3_bucket.artifacts.id
   key    = local.artifact_key
   source = data.archive_file.package.output_path
-  etag   = data.archive_file.package.output_md5
+  source_hash   = data.archive_file.package.output_md5
 
   # Encrypted with the same customer-managed key as everything else.
   server_side_encryption = "aws:kms"
@@ -216,45 +216,24 @@ data "aws_iam_policy_document" "lambda" {
   # Creating an ENI is scoped to this VPC's subnets and security group. The ENI
   # itself does not exist yet at authorisation time, so the network-interface
   # resource has to be matched by pattern.
+
+  # These six actions are a mandatory exception to the no-wildcards
+  # rule according to aws docs: for VPC-attached functions "add all of the
+  # following permissions and allow them on all resources (Resource: *)".
+  # Note: only lambda.amazonaws.com in this account can assume this role, 
+  # so these permissions are only ever exercised by the Lambda service 
+  # managing this function's own ENIs.
   statement {
-    sid    = "CreateLambdaEni"
+    sid    = "LambdaVpcEniManagement"
     effect = "Allow"
     actions = [
       "ec2:CreateNetworkInterface",
-    ]
-    resources = concat(
-      var.subnet_arns,
-      [
-        var.security_group_arn,
-        "arn:${var.partition}:ec2:${data.aws_region.current.name}:${var.account_id}:network-interface/*",
-      ],
-    )
-  }
-
-  statement {
-    sid    = "ManageOwnEni"
-    effect = "Allow"
-    actions = [
+      "ec2:DescribeNetworkInterfaces",
+      "ec2:DescribeSubnets",
       "ec2:DeleteNetworkInterface",
       "ec2:AssignPrivateIpAddresses",
       "ec2:UnassignPrivateIpAddresses",
     ]
-    resources = ["arn:${var.partition}:ec2:${data.aws_region.current.name}:${var.account_id}:network-interface/*"]
-
-    # Restricts the above to ENIs inside our own VPC.
-    condition {
-      test     = "StringEquals"
-      variable = "ec2:Vpc"
-      values   = ["arn:${var.partition}:ec2:${data.aws_region.current.name}:${var.account_id}:vpc/${var.vpc_id}"]
-    }
-  }
-
-  # ec2:DescribeNetworkInterfaces does not support resource-level permissions.
-  # AWS requires "*". This is a mandatory wildcard and is read-only.
-  statement {
-    sid       = "DescribeEnisMandatoryWildcard"
-    effect    = "Allow"
-    actions   = ["ec2:DescribeNetworkInterfaces"]
     resources = ["*"]
   }
 }

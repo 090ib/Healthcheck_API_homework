@@ -172,6 +172,9 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN_STAGING }}
+          role-external-id: ${{ secrets.AWS_DEPLOY_EXTERNAL_ID }}
+          role-session-name: terraform-staging
 
       - name: Init
         run: >
@@ -186,8 +189,8 @@ jobs:
       # deployed function can be traced back to a commit.
       - name: Plan
         env:
-          TF_VAR_deploy_role_arn: ${{ secrets.AWS_DEPLOY_ROLE_ARN_STAGING }}
-          TF_VAR_deploy_role_external_id: ${{ secrets.AWS_DEPLOY_EXTERNAL_ID }}
+          # No TF_VAR_deploy_role_arn: these credentials ARE the deployment
+          # role, assumed at the credential step so the S3 backend uses it too.
           TF_VAR_source_version: ${{ github.sha }}
         run: >
           terraform -chdir=terraform plan
@@ -197,8 +200,8 @@ jobs:
 
       - name: Apply
         env:
-          TF_VAR_deploy_role_arn: ${{ secrets.AWS_DEPLOY_ROLE_ARN_STAGING }}
-          TF_VAR_deploy_role_external_id: ${{ secrets.AWS_DEPLOY_EXTERNAL_ID }}
+          # No TF_VAR_deploy_role_arn: these credentials ARE the deployment
+          # role, assumed at the credential step so the S3 backend uses it too.
           TF_VAR_source_version: ${{ github.sha }}
         run: >
           terraform -chdir=terraform apply
@@ -248,6 +251,9 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN_PROD }}
+          role-external-id: ${{ secrets.AWS_DEPLOY_EXTERNAL_ID }}
+          role-session-name: terraform-prod
 
       # -reconfigure because the same root module is being pointed at a
       # different state key.
@@ -259,8 +265,8 @@ jobs:
 
       - name: Plan
         env:
-          TF_VAR_deploy_role_arn: ${{ secrets.AWS_DEPLOY_ROLE_ARN_PROD }}
-          TF_VAR_deploy_role_external_id: ${{ secrets.AWS_DEPLOY_EXTERNAL_ID }}
+          # No TF_VAR_deploy_role_arn: these credentials ARE the deployment
+          # role, assumed at the credential step so the S3 backend uses it too.
           TF_VAR_source_version: ${{ github.sha }}
         run: >
           terraform -chdir=terraform plan
@@ -282,8 +288,8 @@ jobs:
 
       - name: Apply
         env:
-          TF_VAR_deploy_role_arn: ${{ secrets.AWS_DEPLOY_ROLE_ARN_PROD }}
-          TF_VAR_deploy_role_external_id: ${{ secrets.AWS_DEPLOY_EXTERNAL_ID }}
+          # No TF_VAR_deploy_role_arn: these credentials ARE the deployment
+          # role, assumed at the credential step so the S3 backend uses it too.
           TF_VAR_source_version: ${{ github.sha }}
         run: >
           terraform -chdir=terraform apply

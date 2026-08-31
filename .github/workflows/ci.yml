@@ -168,7 +168,7 @@ jobs:
   #
   # There is deliberately no `environment:` key here. A plan is read-only, and
   # attaching the `production` environment would put every pull request behind
-  # the production approval gate -- which trains reviewers to click approve
+  # the production approval gate, which trains reviewers to click approve
   # reflexively, the opposite of what that gate exists for. Credentials come
   # from repository secrets, and each plan assumes a role already fenced to its
   # own environment.
@@ -199,12 +199,21 @@ jobs:
 
       # AWS authentication via API key. The key belongs to a user whose only
       # permission is sts:AssumeRole into the deployment roles.
+      # then immediately trade it for a short-lived session on the deployment role.
+      # Assuming the role HERE, not in the Terraform provider:
+      # the S3 backend authenticates separately from the provider and would otherwise still be the CI user,
+      # whose only permission is sts:AssumeRole. That produced a 403 on the
+      # state object. Assuming up front means the backend and the provider both
+      # run as the deployment role.
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets[matrix.role_secret] }}
+          role-external-id: ${{ secrets.AWS_DEPLOY_EXTERNAL_ID }}
+          role-session-name: terraform-plan-${{ matrix.environment }}
 
       # Each matrix leg runs on its own fresh runner, so no -reconfigure is
       # needed even though the two legs use different backend keys.
@@ -216,8 +225,6 @@ jobs:
 
       - name: Plan
         env:
-          TF_VAR_deploy_role_arn: ${{ secrets[matrix.role_secret] }}
-          TF_VAR_deploy_role_external_id: ${{ secrets.AWS_DEPLOY_EXTERNAL_ID }}
           TF_VAR_source_version: ${{ github.sha }}
         run: |
           set -o pipefail

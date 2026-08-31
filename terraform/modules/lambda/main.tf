@@ -107,10 +107,10 @@ resource "aws_s3_bucket_policy" "artifacts_tls_only" {
 }
 
 resource "aws_s3_object" "package" {
-  bucket = aws_s3_bucket.artifacts.id
-  key    = local.artifact_key
-  source = data.archive_file.package.output_path
-  source_hash   = data.archive_file.package.output_md5
+  bucket      = aws_s3_bucket.artifacts.id
+  key         = local.artifact_key
+  source      = data.archive_file.package.output_path
+  source_hash = data.archive_file.package.output_md5
 
   # Encrypted with the same customer-managed key as everything else.
   server_side_encryption = "aws:kms"

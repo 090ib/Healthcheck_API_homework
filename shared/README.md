@@ -1,16 +1,18 @@
-# Shared resources for staging and prod
+# Shared resources for staging and prod 
+# *prod infra and ci/cd not implemented due to budget constrains
+
 
 Run this **once per AWS account**, from a workstation with administrator
 credentials, before anything else. It creates the things the environment
 stacks assume already exist.
 
-| Resource | Why it is here and not in `terraform/` |
-| --- | --- |
-| S3 state bucket + KMS key | It *is* the remote backend, so it cannot be stored in the remote backend. |
-| DynamoDB state lock table | Same. |
+| Resource | Why it is here and not in `terraform/`                                                         |
+| --- |------------------------------------------------------------------------------------------------|
+| S3 state bucket + KMS key | It *is* the remote backend, so it cannot be stored in the remote backend.                      |
+| DynamoDB state lock table | Same.                                                                                          |
 | `healthcheck-api-ci-user` + access key | The one long-lived credential. A deployment must never be able to mint credentials for itself. |
-| `staging-health-check-deploy-role`, `prod-health-check-deploy-role` | A role cannot create the role that creates it. |
-| API Gateway account CloudWatch role | Account-wide singleton — two environments managing it would fight. |
+| `staging-health-check-deploy-role`, `prod-health-check-deploy-role` | A role cannot create the role that creates it.                                                 |
+| API Gateway account CloudWatch role | Account-wide singleton - two environments managing it would fight.                             |
 
 ## Apply
 
@@ -53,7 +55,7 @@ This stack keeps **local state**, and that state contains the CI user's secret
 access key. Either:
 
 - store `shared/terraform.tfstate` somewhere safe (it is gitignored), or
-- apply with `-var="create_ci_access_key=false"` and mint the key by hand:
+- apply with `-var="create_ci_access_key=false"` and create the key by hand:
   `aws iam create-access-key --user-name healthcheck-api-ci-user`, or
 - migrate this stack into the bucket it just created, once, with
   `terraform init -migrate-state -backend-config=...`.

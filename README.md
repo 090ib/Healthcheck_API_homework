@@ -40,7 +40,7 @@ environments, with production behind a manual approval gate.
 .
 ├── .github/workflows/
 │   ├── ci.yml              PR checks: tests, dependency scan, IaC scan, plan
-│   └── deploy.yml          main: quality → security → staging → [approval] → prod
+│   └── deploy.yml          main: quality → security → staging → ([approval] → prod)this part is not rolled out due to budget restrictions
 ├── shared/                 run ONCE per account: state backend, CI user, deploy roles
 ├── scripts/smoke-test.sh   post-deploy contract check
 ├── src/lambda/handler.py   the function
@@ -110,10 +110,10 @@ Settings → Secrets and variables → Actions → **Variables**:
 
 Settings → **Environments**. Both are referenced by name in the workflows.
 
-| Environment | Configuration |
-| --- | --- |
-| `staging` | no protection rules — deploys automatically |
-| `production` | **Required reviewers**: at least one person. This *is* the manual approval gate. Optionally also restrict to the `main` branch. |
+| Environment | Configuration                                                                                                                                                              |
+| --- |----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `staging` | no protection rules — deploys automatically                                                                                                                                |
+| `production` | **Required reviewers**: at least one person. This *is* the manual approval gate. Optionally also restrict to the `main` branch. (Not rolled out due to budget limitations) |
 
 ### Fill in the backend config
 
@@ -144,6 +144,7 @@ terraform output -raw backend_config_prod    > ../terraform/env/prod.backend.hcl
 
 To deploy staging without touching production, run the workflow manually:
 Actions → **Deploy** → *Run workflow* → untick **Continue to production**.
+Note: prod ci/cd part not implemented due to limited aws resource budget
 
 ### Locally from laptop (for a first bring-up or a debug loop)
 
@@ -172,16 +173,16 @@ terraform plan -var-file=env/prod.tfvars
 
 ---
 
-## Testing the endpoint
+## Testing the staging endpoint
 
-`terraform output health_endpoint` prints the URL; it looks like
-`https://a1b2c3d4e5.execute-api.eu-central-1.amazonaws.com/staging/health`.
+`terraform output health_endpoint` prints the URL; endpoint for staging deployed is
+`https://dsxg21wind.execute-api.eu-central-1.amazonaws.com/staging/health`.
 
 **POST with a payload — the happy path:**
 
 ```bash
 curl -sS -X POST \
-  "https://a1b2c3d4e5.execute-api.eu-central-1.amazonaws.com/staging/health" \
+  "https://dsxg21wind.execute-api.eu-central-1.amazonaws.com/staging/health" \
   -H "Content-Type: application/json" \
   -d '{"payload": {"service": "checkout", "region": "eu-central-1"}}'
 ```
@@ -193,14 +194,14 @@ curl -sS -X POST \
 **GET — same contract, payload as a query-string parameter:**
 
 ```bash
-curl -sS "https://a1b2c3d4e5.execute-api.eu-central-1.amazonaws.com/staging/health?payload=ping"
+curl -sS "https://dsxg21wind.execute-api.eu-central-1.amazonaws.com/staging/health?payload=ping"
 ```
 
 **Missing `payload` — rejected by API Gateway, 400, Lambda never invoked:**
 
 ```bash
 curl -sS -i -X POST \
-  "https://a1b2c3d4e5.execute-api.eu-central-1.amazonaws.com/staging/health" \
+  "https://dsxg21wind.execute-api.eu-central-1.amazonaws.com/staging/health" \
   -H "Content-Type: application/json" \
   -d '{"nope": true}'
 ```
@@ -229,12 +230,12 @@ aws logs tail /aws/lambda/staging-health-check-function --since 5m
 
 ### `ci.yml` — on every pull request
 
-| Job | What it does | Fails the PR when |
-| --- | --- | --- |
-| `lambda` | ruff, pytest, **`pip-audit`** on `src/lambda/requirements.txt`, bandit | a test fails, a dependency has a known CVE, or bandit finds a medium+ issue |
-| `terraform` | `fmt -check`, `validate` (root and shared), tflint | formatting drift, invalid config, lint rule violation |
-| `iac-security` | **Checkov** + **Trivy** config scan, results uploaded as SARIF to the Security tab | any HIGH/CRITICAL misconfiguration not explicitly justified in `.checkov.yml` |
-| `plan` | `terraform plan` against **both** staging and prod (matrix), each posted as its own PR comment and rewritten in place on every push | plan errors in either environment |
+| Job | What it does                                                                                                                                                                                                                                         | Fails the PR when |
+| --- |------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| --- |
+| `lambda` | ruff, pytest, **`pip-audit`** on `src/lambda/requirements.txt`, bandit                                                                                                                                                                               | a test fails, a dependency has a known CVE, or bandit finds a medium+ issue |
+| `terraform` | `fmt -check`, `validate` (root and shared), tflint                                                                                                                                                                                                   | formatting drift, invalid config, lint rule violation |
+| `iac-security` | **Checkov** + **Trivy** config scan, results uploaded as SARIF to the Security tab                                                                                                                                                                   | any HIGH/CRITICAL misconfiguration not explicitly justified in `.checkov.yml` |
+| `plan` | `terraform plan` against **both** staging and prod (matrix), each posted as its own PR comment and rewritten in place on every push. Prod infra not implemented, so CI/CD part has been skipped for prod as well due to limited budget for aws infra | plan errors in either environment |
 
 `plan` needs secrets, so it is skipped on pull requests from forks rather than
 failing.
@@ -250,11 +251,11 @@ failing.
         │deploy-staging│  apply + smoke test
         └──────┬───────┘
         ┌──────▼───────────────────────┐
-        │  ⏸  environment: production   │  ← job waits here for approver
-        │     required reviewers        │
-        └──────┬───────────────────────┘
+        │  ⏸  environment: production   │  ← As per original design 
+        │     required reviewers        │  job can wait here for approver 
+        └──────┬───────────────────────┘  but this step is not implemented due to limited budget for prod infra
         ┌──────▼───────┐
-        │ deploy-prod  │  plan (shown in the summary) + apply + smoke test
+        │ deploy-prod  │  Not implemented, see above. plan (shown in the summary) + apply + smoke test
         └──────────────┘
 ```
 
@@ -272,7 +273,7 @@ Key properties:
   their own production deploy, and the approval is recorded in the deployment
   history.
 - **Staging is always deployed first.** Production can only be reached through
-  a staging deploy that passed its smoke test.
+  a staging deploy that passed its smoke test (prod skipped due to bdget restrictions)
 - **The PR plan jobs carry no `environment:` key.** Attaching `production`
   there would put every pull request behind the approval gate, which trains
   reviewers to approve reflexively — the opposite of what the gate is for.
@@ -282,9 +283,9 @@ Key properties:
 - Lambda **packaging and versioning are automated**: `archive_file` zips
   `src/lambda`, the archive is stored at a content-addressed S3 key
   (`lambda/<function>/<sha256>.zip`) in a versioned, KMS-encrypted bucket,
-  `publish = true` mints a numbered Lambda version, and the `live` alias moves
+  `publish = true` creates a numbered Lambda version, and the `live` alias moves
   onto it. `github.sha` is stamped on the function and the artifact, so a
-  running function traces back to a commit — and a rollback is moving the alias
+  running function traces back to a commit. And a rollback is moving the alias
   back, not a redeploy.
 
 ### Rolling back
@@ -302,33 +303,44 @@ Then revert the commit so Terraform's state matches reality on the next apply.
 
 ## Security notes
 
-| Requirement | How it is met |
-| --- | --- |
-| Encryption everywhere | One customer-managed KMS key per environment, with rotation enabled, used for the DynamoDB table, every CloudWatch log group, the Lambda environment variables and the S3 artifact bucket. Terraform state is separately KMS-encrypted. Both buckets deny non-TLS access. |
-| DynamoDB SSE | `server_side_encryption { enabled = true, kms_key_arn = ... }`, with a `precondition` that fails the plan if no key ARN is supplied. |
+| Requirement | How it is met                                                                                                                                                                                                                                                                                                                                               |
+| --- |-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Encryption everywhere | One customer-managed KMS key per environment, with rotation enabled, used for the DynamoDB table, every CloudWatch log group, the Lambda environment variables and the S3 artifact bucket. Terraform state is separately KMS-encrypted. Both buckets deny non-TLS access.                                                                                   |
+| DynamoDB SSE | `server_side_encryption { enabled = true, kms_key_arn = ... }`, with a `precondition` that fails the plan if no key ARN is supplied.                                                                                                                                                                                                                        |
 | Invalid requests cannot reach Lambda | A JSON-schema model with `required: ["payload"]` plus an API Gateway request validator on POST, and a required `payload` query-string parameter on GET. Rejections are 400s generated by the gateway; the function is never invoked. The handler re-validates anyway, because a validator only applies when the request's `Content-Type` matches the model. |
-| DDoS / throttling | Stage- and method-level rate and burst limits, an optional per-client usage plan in prod, and `reserved_concurrent_executions` on the function so a flood cannot consume account-wide Lambda concurrency. A CloudWatch alarm fires on sustained 4xx. |
-| Lambda in its own VPC | A dedicated VPC per environment, private subnets only, no internet gateway, no NAT. The security group has **no ingress rules** and egress restricted to the DynamoDB prefix list. The default security group is explicitly emptied. VPC flow logs go to CloudWatch. |
-| Input validation | `payload` required in the JSON body (POST) or query string (GET); body must be a JSON object; 8 KB size cap; 400 with a JSON error body otherwise. |
-| AWS authentication via API key | GitHub Actions authenticates with an IAM access key whose user has exactly two permissions: `sts:AssumeRole` on the two deployment roles, and `sts:GetCallerIdentity`. Every deploy then runs under short-lived credentials from a region- and prefix-fenced role, additionally protected by an `ExternalId`. |
-| Least privilege, no wildcards | See below. |
-| Dependency scanning | `pip-audit --strict` against the Lambda's pinned requirements, plus bandit for the function's own code. |
-| IaC security scanning | Checkov and Trivy, both before apply, both failing the build, with every suppression documented and justified in `.checkov.yml`. |
+| DDoS / throttling | Stage- and method-level rate and burst limits, an optional per-client usage plan in prod, and `reserved_concurrent_executions` on the function so a flood cannot consume account-wide Lambda concurrency. A CloudWatch alarm fires on sustained 4xx.                                                                                                        |
+| Lambda in its own VPC | A dedicated VPC per environment, private subnets only, no internet gateway, no NAT. The security group has **no ingress rules** and egress restricted to the DynamoDB prefix list. The default security group is explicitly emptied. VPC flow logs go to CloudWatch.                                                                                        |
+| Input validation | `payload` required in the JSON body (POST) or query string (GET); body must be a JSON object; 8 KB size cap; 400 with a JSON error body otherwise.                                                                                                                                                                                                          |
+| AWS authentication via API key | GitHub Actions authenticates with an IAM access key whose user has exactly two permissions: `sts:AssumeRole` on the two deployment roles, and `sts:GetCallerIdentity`. Every deploy then runs under short-lived credentials from a region- and prefix-fenced role, additionally protected by an `ExternalId`.                                               |
+| Least privilege, no wildcards | See below.                                                                                                                                                                                                                                                                                                                                                  |
+| Dependency scanning | `pip-audit --strict` against the Lambda's pinned requirements, plus bandit for the function's own code.                                                                                                                                                                                                                                                     |
+| IaC security scanning | Checkov and Trivy (free), both before apply, both failing the build, with every suppression documented and justified in `.checkov.yml`.                                                                                                                                                                                                                     |
 
 ### The wildcards that remain, and why
 
 The rule is "no `*` except where mandatory". Four remain, all deliberate:
 
-1. **`ec2:DescribeNetworkInterfaces`** in the Lambda execution role. AWS does
-   not support resource-level permissions for the EC2 `Describe*` family at
-   all; `"*"` is the only accepted value. It is read-only. For comparison,
-   AWS's own managed `AWSLambdaVPCAccessExecutionRole` uses `"*"` for all five
-   ENI actions; here the other four are scoped to this VPC's subnets, security
-   group and ENIs.
+1. **The six ENI actions** in the Lambda execution role
+   (`ec2:CreateNetworkInterface`, `DescribeNetworkInterfaces`,
+   `DescribeSubnets`, `DeleteNetworkInterface`, `AssignPrivateIpAddresses`,
+   `UnassignPrivateIpAddresses`). AWS's documentation is explicit that these
+   must be allowed on `Resource: "*"` for a VPC-attached function, and this is
+   enforced rather than advisory: `CreateFunction` runs a pre-flight check
+   against the role, and that check has no ENI, subnet or VPC in context to
+   evaluate against, so any resource scoping or condition key on these actions
+   makes the check fail and the function cannot be created.
+
+   An earlier version of this module scoped `CreateNetworkInterface` to the
+   VPC's subnets and put an `ec2:Vpc` condition on `DeleteNetworkInterface`. It
+   was tighter on paper and did not work; the fix was to match AWS's documented
+   form. What bounds the blast radius instead is the trust policy, only
+   `lambda.amazonaws.com` in this account can assume the role, so these
+   permissions are only ever exercised by the Lambda service managing this
+   function's own network interfaces.
 2. **`kms:CreateKey`** in the deployment role. The key does not exist when the
    call is authorised, so there is nothing to scope to. It is fenced by
    `aws:RequestedRegion`.
-3. **Resource *paths* ending in `/*`** — `log-stream:*`, `network-interface/*`,
+3. **Resource *paths* ending in `/*`** - `log-stream:*`, `network-interface/*`,
    `restapis/*`, the artifact bucket's `/*`. These are not "any resource": the
    account, region and parent resource are all pinned; only the
    service-generated child id is a pattern.
@@ -345,7 +357,7 @@ state or modify production resources.
 
 ---
 
-## Design choices and assumptions
+## Budget friendly design choices
 
 **REST API rather than HTTP API.** HTTP APIs are cheaper ($1.00 vs $3.50 per
 million requests) and simpler, but they have no request validators. The
@@ -361,10 +373,10 @@ validates the body against a JSON-schema model, GET requires a `payload`
 query-string parameter. Both are enforced at the gateway and re-checked in the
 handler, and both produce the same 400 when absent.
 
-**One root module + `-var-file`, not one directory per environment.** The task
-asks explicitly for `terraform apply -var-file="staging.tfvars"`. A single root
-module with `env/*.tfvars` and matching `env/*.backend.hcl` partial backend
-configs delivers exactly that, keeps the two environments byte-identical apart
+**One root module + `-var-file`, not one directory per environment.** An example  
+mentioned in assignment is `terraform apply -var-file="staging.tfvars"`, so
+a single root module with `env/*.tfvars` and matching `env/*.backend.hcl` partial
+backend configs delivers exactly that, keeps the two environments byte-identical apart
 from their variables, and avoids the copy-paste drift that per-environment
 directories accumulate. Workspaces are not being used: they share one backend
 credential and one state bucket path, which would defeat the per-environment
@@ -404,8 +416,6 @@ says so.
 credentials is not much of a liveness probe. It is schema-validated, size-
 capped and throttled, and it writes a bounded amount of data. Set
 `authorization = "AWS_IAM"` in the `api_gateway` module to close it.
-
-### Assumptions
 
 - Both environments live in **one AWS account**, separated by resource-name
   prefix and by IAM. Separate accounts per environment would be better and the

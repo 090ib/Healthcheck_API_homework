@@ -117,7 +117,7 @@ data "aws_iam_policy_document" "state" {
 ###############################################################################
 
 data "aws_iam_policy_document" "stack" {
-  #checkov:skip=CKV_AWS_356:Two statements need "*": kms:CreateKey (no key exists to scope to) and the read-only ec2:Describe* family (no resource-level permissions in IAM). Both are fenced by aws:RequestedRegion, and a Deny block bounds the rest. See README.
+  #checkov:skip=CKV_AWS_356:Two statements need "*": kms:CreateKey (no key exists to scope to) and the read-only discovery family -- ec2:Describe*, kms:ListAliases and logs:DescribeLogGroups -- none of which support resource-level permissions in IAM. All are fenced by region -- by aws:RequestedRegion on the create statement and by the Deny block on the rest. See README.
   # --- DynamoDB application table ------------------------------------------
   statement {
     sid    = "ManageApplicationTable"
@@ -197,7 +197,6 @@ data "aws_iam_policy_document" "stack" {
     actions = [
       "logs:CreateLogGroup",
       "logs:DeleteLogGroup",
-      "logs:DescribeLogGroups",
       "logs:PutRetentionPolicy",
       "logs:DeleteRetentionPolicy",
       "logs:AssociateKmsKey",
@@ -214,6 +213,23 @@ data "aws_iam_policy_document" "stack" {
       "${local.arn_prefix}:logs:${local.region}:${var.account_id}:log-group:/aws/vpc/${local.env_resource}",
       "${local.arn_prefix}:logs:${local.region}:${var.account_id}:log-group:/aws/vpc/${local.env_resource}:*",
     ]
+  }
+
+  # --- CloudWatch alarms ----------------------------------------------------
+  # The API 5xx and throttling alarms. Alarm ARNs do support resource-level
+  # permissions, so these stay fenced to this environment's prefix.
+  statement {
+    sid    = "ManageMetricAlarms"
+    effect = "Allow"
+    actions = [
+      "cloudwatch:DescribeAlarms",
+      "cloudwatch:PutMetricAlarm",
+      "cloudwatch:DeleteAlarms",
+      "cloudwatch:TagResource",
+      "cloudwatch:UntagResource",
+      "cloudwatch:ListTagsForResource",
+    ]
+    resources = ["${local.arn_prefix}:cloudwatch:${local.region}:${var.account_id}:alarm:${local.env_resource}"]
   }
 
   # --- Artifact bucket ------------------------------------------------------
@@ -299,7 +315,6 @@ data "aws_iam_policy_document" "stack" {
       "kms:CreateAlias",
       "kms:DeleteAlias",
       "kms:UpdateAlias",
-      "kms:ListAliases",
       "kms:ListResourceTags",
       "kms:TagResource",
       "kms:UntagResource",
@@ -420,6 +435,16 @@ data "aws_iam_policy_document" "stack" {
       "ec2:DescribeTags",
       "sts:GetCallerIdentity",
       "iam:ListRoles",
+      # kms:ListAliases and logs:DescribeLogGroups are the API calls Terraform
+      # makes when refreshing an aws_kms_alias or an aws_cloudwatch_log_group.
+      # Neither supports resource-level permissions: KMS has no alias ARN to
+      # match before the alias is resolved, and DescribeLogGroups is a
+      # list-and-filter call whose authorisation context carries an empty
+      # log-group name (the denial reads "log-group::log-stream:"). Scoping
+      # them to an ARN silently denies every refresh. Both are read-only, and
+      # the Deny block below still fences them to this region.
+      "kms:ListAliases",
+      "logs:DescribeLogGroups",
     ]
     resources = ["*"]
   }
@@ -469,7 +494,7 @@ data "aws_iam_policy_document" "guardrails" {
   statement {
     sid       = "DenyOutsideDeploymentRegion"
     effect    = "Deny"
-    actions   = ["ec2:*", "lambda:*", "dynamodb:*", "apigateway:*", "kms:*", "logs:*"]
+    actions   = ["ec2:*", "lambda:*", "dynamodb:*", "apigateway:*", "kms:*", "logs:*", "cloudwatch:*"]
     resources = ["*"]
 
     condition {

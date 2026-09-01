@@ -205,6 +205,29 @@ jobs:
       # whose only permission is sts:AssumeRole. That produced a 403 on the
       # state object. Assuming up front means the backend and the provider both
       # run as the deployment role.
+
+      # TEMPORARY DIAGNOSTIC: delete once the assume-role failure is resolved.
+      # Prints only the length and a truncated SHA-256 of each secret, never the
+      # value, so they can be compared against locally computed hashes without
+      # disclosing anything in the run log.
+      - name: Fingerprint credentials secrets
+        env:
+          ROLE: ${{ secrets[matrix.role_secret] }}
+          EXT: ${{ secrets.AWS_DEPLOY_EXTERNAL_ID }}
+          KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        run: |
+          fp() { printf '%s: len=%s sha=%s\n' "$1" "${#2}" \
+            "$(printf %s "$2" | sha256sum | cut -c1-12)"; }
+          fp role_secret "$ROLE"
+          fp external_id "$EXT"
+          fp access_key  "$KEY"
+          case "$ROLE" in
+            arn:aws:iam::*:role/*) echo "role_secret shape: full IAM role ARN" ;;
+            arn:*)                 echo "role_secret shape: an ARN, but not an IAM role ARN" ;;
+            *)                     echo "role_secret shape: bare name -- the action will build the ARN" ;;
+          esac
+          if [ "$ROLE" = "$EXT" ]; then echo "ALARM: role_secret and external_id hold the same value"; fi
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:

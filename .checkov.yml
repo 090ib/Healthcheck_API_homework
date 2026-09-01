@@ -70,7 +70,7 @@ skip-check:
   - CKV_AWS_116
 
   # "Ensure access is controlled through SSO and not AWS IAM defined users".
-  # Fires on aws_iam_user.ci in bootstrap/. The brief requires "AWS
+  # Fires on aws_iam_user.ci in shared/. The brief requires "AWS
   # authentication via API key", and a static access key needs an IAM user ,
   # Identity Center issues short-lived credentials to humans, not a machine
   # identity a GitHub Actions runner can present. The mitigation is that this

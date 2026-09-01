@@ -175,6 +175,11 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN_STAGING }}
           role-external-id: ${{ secrets.AWS_DEPLOY_EXTERNAL_ID }}
           role-session-name: terraform-staging
+          # Session tags are a convenience (they stamp repo/actor/commit onto the
+          # session); they require sts:TagSession on BOTH the trust policy and the
+          # CI user's identity policy. Skipped rather than carried, so the deploy
+          # path depends on sts:AssumeRole alone.
+          role-skip-session-tagging: true
 
       - name: Init
         run: >
@@ -254,6 +259,11 @@ jobs:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN_PROD }}
           role-external-id: ${{ secrets.AWS_DEPLOY_EXTERNAL_ID }}
           role-session-name: terraform-prod
+          # Session tags are a convenience (they stamp repo/actor/commit onto the
+          # session); they require sts:TagSession on BOTH the trust policy and the
+          # CI user's identity policy. Skipped rather than carried, so the deploy
+          # path depends on sts:AssumeRole alone.
+          role-skip-session-tagging: true
 
       # -reconfigure because the same root module is being pointed at a
       # different state key.

@@ -1,0 +1,39 @@
+# --- Terraform -------------------------------------------------------------
+**/.terraform/*
+.terraform.lock.hcl.bak
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Never commit variable files that may hold real values or secrets.
+# The checked-in env/*.tfvars files carry no secrets by design.
+*.auto.tfvars
+secrets.tfvars
+
+# Build output of the Lambda packaging step.
+terraform/modules/lambda/.build/
+
+# --- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# --- Tooling ---------------------------------------------------------------
+checkov.sarif
+plan.txt
+.DS_Store
+.idea/
+*.iml

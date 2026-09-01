@@ -1,0 +1,30 @@
+# Trivy configuration for the IaC (misconfiguration) scan.
+#
+# Trivy runs alongside Checkov because the two have meaningfully different rule
+# sets; between them they cover more than either does alone.
+
+severity:
+  - HIGH
+  - CRITICAL
+
+exit-code: 1
+
+misconfiguration:
+  include-non-failures: false
+
+scan:
+  skip-dirs:
+    - "**/.terraform"
+    - ".git"
+
+# Deviations, matching the ones documented in .checkov.yml.
+misconfig:
+  # AVD-AWS-0017: CloudWatch log groups are in fact KMS-encrypted here, but
+  # Trivy cannot follow the key ARN through a module variable.
+  # AVD-AWS-0089: S3 access logging on the artifact bucket -- see .checkov.yml.
+  # AVD-AWS-0158: same, for the state bucket, which is created by an admin.
+  # AVD-AWS-0053: public API Gateway endpoint -- intentional for a health probe.
+  ignore-checks:
+    - AVD-AWS-0089
+    - AVD-AWS-0158
+    - AVD-AWS-0053

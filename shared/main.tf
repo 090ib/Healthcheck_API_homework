@@ -197,9 +197,13 @@ resource "aws_iam_user" "ci" {
 
 data "aws_iam_policy_document" "ci_assume_only" {
   statement {
-    sid       = "AssumeDeploymentRolesOnly"
-    effect    = "Allow"
-    actions   = ["sts:AssumeRole"]
+    sid    = "AssumeDeploymentRolesOnly"
+    effect = "Allow"
+    # TagSession is required because aws-actions/configure-aws-credentials
+    # attaches session tags (repo, workflow, actor, commit) to the AssumeRole
+    # call by default. The trust policy already allows it; without the matching
+    # allow on the identity side the call is denied.
+    actions   = ["sts:AssumeRole", "sts:TagSession"]
     resources = [for env in var.environments : "arn:${local.partition}:iam::${local.account_id}:role/${env}-health-check-deploy-role"]
   }
 

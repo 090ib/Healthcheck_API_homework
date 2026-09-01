@@ -1,5 +1,6 @@
 # Rollout plan
 
+
 How to get this project from a git repository to a running staging/production
 endpoint, in 7 phases. Each phase ends with an explicit verification gate
 and a rollback route, so a failure stops at a known point rather than halfway

@@ -51,11 +51,12 @@ data "aws_iam_policy_document" "assume_role" {
       }
     }
 
-    # Removed aws:SecureTransport condition. STS endpoints accept
-    # HTTPS only, so the condition buys nothing, and a Bool test on a key
-    # that is absent from the request context evaluates false, which denies
-    # every assume unconditionally. TLS on this path is guaranteed by the
-    # endpoint, not by policy.
+    # Deploys must originate from the pipeline, over TLS.
+    condition {
+      test     = "Bool"
+      variable = "aws:SecureTransport"
+      values   = ["true"]
+    }
   }
 }
 

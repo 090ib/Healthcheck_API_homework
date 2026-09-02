@@ -101,7 +101,14 @@ jobs:
         with:
           tflint_version: v0.53.0
 
+      # `tflint --init` downloads the AWS ruleset through the GitHub API. Left
+      # unauthenticated it shares the runner IP's 60-requests-per-hour anonymous
+      # budget with every other job on that host, which fails intermittently as
+      # "403 API rate limit exceeded". The automatic GITHUB_TOKEN raises the limit
+      # to 1,000 per hour; tflint reads it from the environment.
       - name: TFLint
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tflint --init
           tflint --recursive --format compact
